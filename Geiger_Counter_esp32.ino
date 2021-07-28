@@ -1,97 +1,72 @@
-
-#define PRINT_DEBUG_MESSAGES
-
 #include <SSD1306.h>
-
-#define PERIOD_LOG 5                  //Logging period 
-#define PERIOD_THINKSPEAK 60        // in seconds, >60
-
+#define LOG_PERIOD 60000 //60,000 = 60 seconds
+#define INPUT_PIN 2
 SSD1306  display(0x3c, 5, 4);
 
+int counts = 0;
+unsigned int previousCPM;
+unsigned long previousMillis;
+unsigned int elapsedSecs;
 
-const int inputPin = 25;
+void displayString(String dispString, int x, int y) {
+  display.setColor(WHITE);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(x, y, dispString);
+  display.setFont(ArialMT_Plain_16);
+  display.display();
+}
 
-volatile unsigned long counts = 0;                       // Tube events
-int cpm = 0;                                             // CPM
-int lastCounts = 0;
-unsigned long lastCountTime;                            // Time measurement
-unsigned long lastEntryThingspeak;
-
-void IRAM_ATTR ISR_impulse() { // Captures count of events from Geiger counter board
-  counts++;
+void displayInt(int dispInt, int x, int y) {
+  display.setColor(WHITE);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(x, y, String(dispInt));
+  display.setFont(ArialMT_Plain_16);
+  display.display();
 }
 
 void displayInit() {
   display.init();
   display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_24);
+  display.setFont(ArialMT_Plain_16);
 }
 
-void displayInt(int dispInt, int x, int y) {
-  display.setColor(WHITE);
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(x, y, String(dispInt));
-  display.setFont(ArialMT_Plain_24);
-  display.display();
-}
-
-void displayString(String dispString, int x, int y) {
-  display.setColor(WHITE);
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(x, y, dispString);
-  display.setFont(ArialMT_Plain_24);
-  display.display();
-}
-
-
-/****reset***/
-void software_Reset() // Restarts program from beginning but does not reset the peripherals and registers
-{
-  Serial.print("resetting");
-  esp_restart();
-}
-
-
-
-
-void setup() {
-  Serial.begin(115200);
-
-  if (PERIOD_LOG > PERIOD_THINKSPEAK) {
-    Serial.println("PERIOD_THINKSPEAK has to be bigger than PERIODE_LOG");
-    while (1);
-  }
+void setup() { 
   displayInit();
-  displayString("Welcome", 64, 15);
-
-  display.clear();
-  displayString("Measuring", 64, 15);
-  pinMode(inputPin, INPUT);                            // Set pin for capturing Tube events
-  attachInterrupt(inputPin, ISR_impulse, FALLING);     // Define interrupt on falling edge
-  lastEntryThingspeak = millis();
-  lastCountTime = millis();
-  Serial.println("Initialized");
+  counts = 0;
+  Serial.begin(9600);
+  pinMode(INPUT_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(INPUT_PIN), iterateCounter, FALLING); //define external interrupts
+  Serial.println("Init");
 }
 
-void loop() {
 
-  if (millis() - lastCountTime > (PERIOD_LOG * 1000)) {
-    Serial.print("Counts: "); Serial.println(counts);
-    cpm = (counts - lastCounts) / PERIOD_LOG ;
-    lastCounts = counts;
-    lastCountTime = millis();
-    display.clear();
-    displayString("Radioactivity", 64, 0);
-    displayInt(cpm, 64, 30);
-    if (cpm > 100 );
-    Serial.print("cpm: "); Serial.println(cpm);
-  }
+void iterateCounter() {
+  
+  counts++;
+}
 
-  if (millis() - lastEntryThingspeak > (PERIOD_THINKSPEAK * 1000)) {
-    Serial.print("Counts: "); Serial.println(counts);
-    int averageCPM = (counts) / PERIOD_THINKSPEAK;
-    lastEntryThingspeak = millis();
-    counts=0;
-    lastCounts=0;
+void loop() { 
+    elapsedSecs = millis()/1000;
+    unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis > LOG_PERIOD) {
+    previousMillis = currentMillis;
+    Serial.print("CPM: "); Serial.println(counts);
+    previousCPM = counts;
+    counts = 0;
+    displayInit();
+
+  } else {
+    displayString("CPM: ", 0,0);
+    displayString("Time:",50,0);
+    displayString("Crnt CPM:",0,40);
+    // following overlaps previous text with a black rectangle effectively erasing it.
+    display.drawRect(0, 20, 100, 40);
+    display.setColor(BLACK);
+    display.fillRect(0, 20, 100, 40);
+    display.setColor(WHITE);
+    displayInt(elapsedSecs,50,20);
+    displayInt(previousCPM,0,20);
+    Serial.println(counts);
+    displayInt(counts,80,40);
   }
 }
